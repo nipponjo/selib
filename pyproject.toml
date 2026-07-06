@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "selib"
+version = "0.1.0"
+description = "A simple speech enhancement library using ONNX models"
+readme = "README.md"
+requires-python = ">=3.8.0"
+authors = [
+    { name = "nipponjo", email = "nipponjo.git@gmail.com" },
+]
+dependencies = [
+    "numpy",
+    "librosa",
+    "onnxruntime-gpu; sys_platform != 'darwin'",
+    "onnxruntime; sys_platform == 'darwin'",
+]
+classifiers = [
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Telecommunications Industry",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Multimedia",
+    "Topic :: Multimedia :: Sound/Audio",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+[project.urls]
+Homepage = "https://github.com/nipponjo/selib"
+
+[tool.setuptools.packages.find]
+where = ["."]
