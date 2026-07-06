@@ -14,7 +14,7 @@ pip install git+https://github.com/nipponjo/selib.git
 
 ## Basic Use
 
-The shortest path is `selib.enhance(model_id, wave)`. Pass a mono NumPy waveform at the sample rate expected by the model.
+The shortest path is `selib.enhance(wave, model_id)`. Pass a mono NumPy waveform at the sample rate expected by the model.
 ```python
 import librosa
 import selib
@@ -31,7 +31,7 @@ wave_noisy = snr_mixer(wave_clean, noise, snr=5)
 
 # Enhance with a registered model id.
 # The ONNX model is downloaded and cached automatically on first use.
-wave_enhanced = selib.enhance("deepfilternet3", wave_noisy)
+wave_enhanced = selib.enhance(wave_noisy, "deepfilternet3")
 ```
 
 You can also save the enhanced waveform directly. The loaded model is cached by
@@ -41,8 +41,8 @@ session.
 ```python
 # Save as 24-bit PCM WAV while returning the enhanced NumPy array.
 wave_enhanced = selib.enhance(
-    "deepfilternet3",
     wave_noisy,
+    "deepfilternet3",    
     save_to="enhanced.wav",
     bits_per_sample=24,
 )
