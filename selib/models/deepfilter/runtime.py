@@ -142,7 +142,9 @@ class DeepFilterNetOnnx:
         Parameters
         ----------
         wave : ndarray
-            Mono input waveform. It is converted to ``float32`` and flattened.
+            Input waveform at the model sample rate. For multidimensional input
+            shaped ``[..., samples]``, the leading dimensions are flattened into
+            the ONNX batch axis and restored in the output.
         pad : bool, default=True
             If True, append one FFT window before analysis and crop the
             algorithmic delay after synthesis, matching the original offline
@@ -165,88 +167,134 @@ class DeepFilterNetOnnx:
             dictionary containing ``audio``, noisy/enhanced spectrograms, ERB
             mask, deep-filter coefficients, optional alpha, and ONNX outputs.
         """
-        wave = np.asarray(wave, dtype=np.float32).reshape(-1)
-        orig_len = wave.shape[0]
+        wave = np.asarray(wave, dtype=np.float32)
+        input_shape = wave.shape
+        if wave.ndim == 0:
+            raise ValueError("wave must contain at least one sample")
 
-        spec_ft = stft(
-            wave,
-            n_fft=self.fft_size,
-            hop_length=self.hop_size,
-            win_length=self.win_size,
-            pad=pad,
-        )
-        spec_tf = spec_ft.T.astype(np.complex64)
-        spec_ri, erb_feat, spec_feat = make_features(
-            spec_ft, self.erb_widths, self.nb_df, self.norm_alpha)
+        flat_waves = wave.reshape(-1, input_shape[-1])
+        orig_len = input_shape[-1]
+
+        spec_fts = [
+            stft(
+                flat_wave,
+                n_fft=self.fft_size,
+                hop_length=self.hop_size,
+                win_length=self.win_size,
+                pad=pad,
+            )
+            for flat_wave in flat_waves
+        ]
+        spec_tfs = [spec_ft.T.astype(np.complex64) for spec_ft in spec_fts]
+        features = [
+            make_features(spec_ft, self.erb_widths, self.nb_df, self.norm_alpha)
+            for spec_ft in spec_fts
+        ]
+        spec_ri = np.concatenate([feat[0] for feat in features], axis=0)
+        erb_feat = np.concatenate([feat[1] for feat in features], axis=0)
+        spec_feat = np.concatenate([feat[2] for feat in features], axis=0)
 
         out = self.forward_features(spec_ri, erb_feat, spec_feat)
-        mask = out["erb_mask"][0, 0]
-        coefs = out["df_coefs"][0]
-        alpha = out.get("df_alpha", None)
-        alpha = None if alpha is None or alpha.size == 1 else alpha[0]
+        masks = out["erb_mask"][:, 0]
+        coefs_batch = out["df_coefs"]
+        alpha_batch = out.get("df_alpha", None)
 
-        if self.run_erb:
-            spec_masked = apply_erb_mask(
-                spec_tf,
-                mask,
-                self.erb_widths,
-                post_filter=False,
-                post_filter_beta=self.post_filter_beta,
-            )
-        else:
-            spec_masked = spec_tf.copy()
+        audios = []
+        specs_enh = []
+        alphas = []
+        for batch_idx, spec_tf in enumerate(spec_tfs):
+            mask = masks[batch_idx]
+            coefs = coefs_batch[batch_idx]
+            alpha = None
+            if alpha_batch is not None and alpha_batch.size != 1:
+                alpha = alpha_batch[batch_idx]
+            alphas.append(alpha)
 
-        if self.run_df:
-            df_input = spec_tf if self.model_family == "DeepFilterNet3" else spec_masked
-            spec_enh = df_input
-            for _ in range(self.df_iter):
-                spec_enh = apply_deep_filter(
-                    spec_enh,
-                    coefs,
-                    df_bins=self.nb_df,
-                    df_order=self.df_order,
-                    df_lookahead=self.df_lookahead,
-                    alpha=alpha if self.use_alpha else None,
+            if self.run_erb:
+                spec_masked = apply_erb_mask(
+                    spec_tf,
+                    mask,
+                    self.erb_widths,
+                    post_filter=False,
+                    post_filter_beta=self.post_filter_beta,
                 )
-            if self.model_family == "DeepFilterNet3" and self.run_erb:
-                spec_enh[:, self.nb_df:] = spec_masked[:, self.nb_df:]
-        else:
-            spec_enh = spec_masked
+            else:
+                spec_masked = spec_tf.copy()
 
-        if self.post_filter:
-            eps = 1e-12
-            mag_ratio = np.abs(spec_enh) / np.maximum(np.abs(spec_tf), eps)
-            mask_pf = np.clip(mag_ratio, eps, 1.0)
-            mask_sin = mask_pf * np.sin(np.pi * mask_pf / 2.0)
-            pf = (1.0 + self.post_filter_beta) / (
-                1.0 + self.post_filter_beta * (mask_pf / np.maximum(mask_sin, eps)) ** 2)
-            spec_enh = spec_enh * pf
+            if self.run_df:
+                df_input = spec_tf if self.model_family == "DeepFilterNet3" else spec_masked
+                spec_enh = df_input
+                for _ in range(self.df_iter):
+                    spec_enh = apply_deep_filter(
+                        spec_enh,
+                        coefs,
+                        df_bins=self.nb_df,
+                        df_order=self.df_order,
+                        df_lookahead=self.df_lookahead,
+                        alpha=alpha if self.use_alpha else None,
+                    )
+                if self.model_family == "DeepFilterNet3" and self.run_erb:
+                    spec_enh[:, self.nb_df:] = spec_masked[:, self.nb_df:]
+            else:
+                spec_enh = spec_masked
 
-        spec_enh = attenuation_limit(
-            spec_tf, spec_enh, atten_lim_db=atten_lim_db)
-        audio = istft(
-            spec_enh.T,
-            hop_length=self.hop_size,
-            win_length=self.win_size,
-            length=None,
-        )
-        if pad:
-            delay = self.fft_size - self.hop_size
-            audio = audio[delay:orig_len + delay]
+            if self.post_filter:
+                eps = 1e-12
+                mag_ratio = np.abs(spec_enh) / np.maximum(np.abs(spec_tf), eps)
+                mask_pf = np.clip(mag_ratio, eps, 1.0)
+                mask_sin = mask_pf * np.sin(np.pi * mask_pf / 2.0)
+                pf = (1.0 + self.post_filter_beta) / (
+                    1.0 + self.post_filter_beta * (mask_pf / np.maximum(mask_sin, eps)) ** 2)
+                spec_enh = spec_enh * pf
+
+            spec_enh = attenuation_limit(
+                spec_tf, spec_enh, atten_lim_db=atten_lim_db)
+            audio = istft(
+                spec_enh.T,
+                hop_length=self.hop_size,
+                win_length=self.win_size,
+                length=None,
+            )
+            if pad:
+                delay = self.fft_size - self.hop_size
+                audio = audio[delay:orig_len + delay]
+            else:
+                audio = audio[:orig_len]
+            audios.append(audio.astype(np.float32))
+            specs_enh.append(spec_enh)
+
+        audio = np.stack(audios, axis=0)
+        if wave.ndim == 1:
+            audio_out = audio[0]
+            spec_noisy_out = spec_tfs[0]
+            spec_enh_out = specs_enh[0]
+            mask_out = masks[0]
+            coefs_out = coefs_batch[0]
+            alpha_out = alphas[0]
         else:
-            audio = audio[:orig_len]
+            audio_out = audio.reshape(*input_shape[:-1], audio.shape[-1])
+            spec_noisy_out = np.stack(spec_tfs, axis=0).reshape(
+                *input_shape[:-1], *spec_tfs[0].shape)
+            spec_enh_out = np.stack(specs_enh, axis=0).reshape(
+                *input_shape[:-1], *specs_enh[0].shape)
+            mask_out = masks.reshape(*input_shape[:-1], *masks.shape[1:])
+            coefs_out = coefs_batch.reshape(*input_shape[:-1], *coefs_batch.shape[1:])
+            if alpha_batch is None or alpha_batch.size == 1:
+                alpha_out = None
+            else:
+                alpha_out = alpha_batch.reshape(*input_shape[:-1], *alpha_batch.shape[1:])
 
         if return_dict:
             return {
-                "audio": audio.astype(np.float32),
-                "spec_noisy": spec_tf,
-                "spec_enhanced": spec_enh,
-                "erb_mask": mask,
-                "df_coefs": coefs,
-                "df_alpha": alpha,
+                "audio": audio_out.astype(np.float32),
+                "spec_noisy": spec_noisy_out,
+                "spec_enhanced": spec_enh_out,
+                "erb_mask": mask_out,
+                "df_coefs": coefs_out,
+                "df_alpha": alpha_out,
                 "onnx_outputs": out,
             }
-        return audio.astype(np.float32)
+        return audio_out.astype(np.float32)
 
     def __repr__(self) -> str:
         """Return the model metadata as a readable multi-line string."""

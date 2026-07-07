@@ -105,6 +105,19 @@ class MagnitudeMaskModel:
             model_input = spec_input_ri[None]
         return model_input
 
+    def _prepare_batch_model_input(self, specs_input):
+        """Convert batched STFTs into a flattened ONNX batch tensor."""
+        freq_bins, frames = specs_input.shape[-2:]
+        flat_specs = specs_input.reshape(-1, freq_bins, frames)
+        if self.input_type == "magnitude_spectrogram":
+            model_input = np.abs(flat_specs)[:, None]
+        elif self.input_type == "real_imag_spectrogram":
+            model_input = np.stack(
+                [flat_specs.real, flat_specs.imag], axis=1)
+        else:
+            raise ValueError(f"Unsupported input_type {self.input_type!r}")
+        return model_input
+
     def enhance(self,
                 wave: np.ndarray,
                 return_mask: bool = False,
@@ -116,7 +129,10 @@ class MagnitudeMaskModel:
         Parameters
         ----------
         wave : ndarray
-            Mono waveform at the sample rate expected by the ONNX model.
+            Waveform at the sample rate expected by the ONNX model. For
+            multidimensional input shaped ``[..., samples]``, the leading
+            dimensions are flattened into the ONNX batch axis and restored in
+            the output.
 
         return_mask : bool, default=False
             If True, return both the enhanced waveform and the magnitude mask
@@ -139,46 +155,61 @@ class MagnitudeMaskModel:
             ``return_mask=True``; or a dictionary containing the waveform,
             mask, noisy STFT, and enhanced STFT when ``return_dict=True``.
         """
-        wave = np.asarray(wave, dtype=np.float32).reshape(-1)
-        output_length = len(wave) if padding is not None else None
+        wave = np.asarray(wave, dtype=np.float32)
+        input_shape = wave.shape
+        if wave.ndim == 0:
+            raise ValueError("wave must contain at least one sample")
+
+        output_length = input_shape[-1] if padding is not None else None
 
         # STFT
-        spec_input = librosa.stft(
+        specs_input = librosa.stft(
             wave,
             n_fft=self.n_fft,
             hop_length=self.n_hop,
             pad_mode='reflect'
         )
 
-        model_input = self.prepare_model_input(spec_input)
+        model_input = self._prepare_batch_model_input(specs_input)
 
         # infer mask
         mask = self.sess.run(
             None, {self.input_key: model_input.astype(np.float32)})[0]
-        mask = np.clip(mask, *self.mask_clamp)[0, 0]  # clamp mask
+        mask = np.clip(mask, *self.mask_clamp)[:, 0]  # clamp mask
 
         # multiply
-        spec_enhan = spec_input*mask
+        freq_bins, frames = specs_input.shape[-2:]
+        specs_input_flat = specs_input.reshape(-1, freq_bins, frames)
+        specs_enhan_flat = specs_input_flat * mask
+        specs_enhan = specs_enhan_flat.reshape(*specs_input.shape)
 
         # reuse phase
         # spec_enhan = spec_abs_enhan*np.exp(1j*spec_input_phase)
 
         # re-synthesize
         wave_enhan = librosa.istft(
-            spec_enhan,
+            specs_enhan,
             n_fft=self.n_fft,
             hop_length=self.n_hop,
             length=output_length,
         )
+        if wave.ndim == 1:
+            mask_out = mask[0]
+            spec_input_out = specs_input
+            spec_enhan_out = specs_enhan
+        else:
+            mask_out = mask.reshape(*input_shape[:-1], *mask.shape[1:])
+            spec_input_out = specs_input
+            spec_enhan_out = specs_enhan
         if return_dict:
             return {
                 'wave_enhanced': wave_enhan,
-                'mask': mask,
-                "spec_input": spec_input,
-                'spec_enhanced': spec_enhan
+                'mask': mask_out,
+                "spec_input": spec_input_out,
+                'spec_enhanced': spec_enhan_out
             }
         if return_mask:
-            return wave_enhan, mask
+            return wave_enhan, mask_out
         return wave_enhan
 
     def __repr__(self) -> str:

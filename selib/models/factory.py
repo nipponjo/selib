@@ -156,6 +156,10 @@ def enhance(wave: np.ndarray,
     output = model.enhance(wave, **enhance_kwargs)
     if save_to is not None:
         wave_out = _wave_from_output(output)
+        if np.asarray(wave_out).ndim != 1:
+            raise ValueError(
+                "save_to only supports a single 1-D waveform. "
+                "For batched/channel input, save each output item separately.")
         save_wave(
             np.asarray(wave_out, dtype=np.float32),
             str(save_to),
