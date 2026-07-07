@@ -4,9 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "speech-selib"
-version = "0.2.0"
+version = "0.2.1"
 description = "A simple speech enhancement library using ONNX models"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.8.0"
 authors = [
     { name = "nipponjo", email = "nipponjo.git@gmail.com" },
@@ -40,3 +42,6 @@ Issues = "https://github.com/nipponjo/selib/issues"
 where = ["."]
 include = ["selib", "selib.*"]
 exclude = ["tmp", "tmp.*", "data", "data.*", "dist", "build", "*.egg-info"]
+
+[tool.setuptools.package-data]
+"selib.models.deepfilter" = ["licenses/*"]
