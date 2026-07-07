@@ -5,11 +5,16 @@ simple `enhance()` function, lightweight model wrappers, and utility functions f
 
 ## Install
 
-Install the package directly from GitHub while the project is still small and moving quickly.
+Install the package directly from GitHub for the latest version.
 
 ```bash
-# Install SeLib and its Python dependencies.
 pip install git+https://github.com/nipponjo/selib.git
+```
+
+or the latest release:
+
+```bash
+pip install speech-selib
 ```
 
 ## Basic Use
@@ -68,7 +73,7 @@ Magnitude-mask models can also be used directly. They predict a mask, multiply
 it with the noisy magnitude spectrogram, and reuse the noisy phase.
 
 ```python
-from selib import MagnitudeMaskModel
+from selib.models import MagnitudeMaskModel
 
 # ul_unas_16k is a 16 kHz magnitude-mask model.
 mask_model = MagnitudeMaskModel("ul_unas_16k")

@@ -5,13 +5,13 @@ from pathlib import Path
 from setuptools import setup, find_packages
 
 
-NAME = "selib"
+NAME = "speech-selib"
 DESCRIPTION = "A simple speech enhancement library using ONNX models"
 URL = "https://github.com/nipponjo/selib"
 EMAIL = "nipponjo.git@gmail.com"
 AUTHOR = "nipponjo"
 REQUIRES_PYTHON = ">=3.8.0"
-VERSION = "0.1.0"
+VERSION = "0.1.1"
 
 HERE = Path(__file__).parent
 
@@ -32,7 +32,10 @@ setup(
     python_requires=REQUIRES_PYTHON,
     url=URL,
 
-    packages=find_packages(),
+    packages=find_packages(
+        include=["selib", "selib.*"],
+        exclude=["tmp", "tmp.*", "data", "data.*", "dist", "build", "*.egg-info"],
+    ),
     install_requires=[
         "numpy",
         "librosa",

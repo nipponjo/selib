@@ -3,8 +3,8 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "selib"
-version = "0.1.0"
+name = "speech-selib"
+version = "0.1.1"
 description = "A simple speech enhancement library using ONNX models"
 readme = "README.md"
 requires-python = ">=3.8.0"
@@ -36,3 +36,5 @@ Homepage = "https://github.com/nipponjo/selib"
 
 [tool.setuptools.packages.find]
 where = ["."]
+include = ["selib", "selib.*"]
+exclude = ["tmp", "tmp.*", "data", "data.*", "dist", "build", "*.egg-info"]
