@@ -11,7 +11,7 @@ Install the package directly from GitHub for the latest version.
 pip install git+https://github.com/nipponjo/selib.git
 ```
 
-or the latest release:
+or for the latest release:
 
 ```bash
 pip install speech-selib
@@ -19,7 +19,7 @@ pip install speech-selib
 
 ## Basic Use
 
-The shortest path is `selib.enhance(wave, model_id)`. Pass a mono NumPy waveform at the sample rate expected by the model.
+The shortest path is `selib.enhance(wave, model_id)`. Pass a NumPy waveform at the sample rate expected by the model.
 ```python
 import librosa
 import selib
