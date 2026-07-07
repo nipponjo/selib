@@ -11,7 +11,7 @@ URL = "https://github.com/nipponjo/selib"
 EMAIL = "nipponjo.git@gmail.com"
 AUTHOR = "nipponjo"
 REQUIRES_PYTHON = ">=3.8.0"
-VERSION = "0.1.1"
+VERSION = "0.2.0"
 
 HERE = Path(__file__).parent
 

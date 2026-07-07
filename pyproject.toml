@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "speech-selib"
-version = "0.1.1"
+version = "0.2.0"
 description = "A simple speech enhancement library using ONNX models"
 readme = "README.md"
 requires-python = ">=3.8.0"
@@ -33,6 +33,8 @@ classifiers = [
 
 [project.urls]
 Homepage = "https://github.com/nipponjo/selib"
+Repository = "https://github.com/nipponjo/selib"
+Issues = "https://github.com/nipponjo/selib/issues"
 
 [tool.setuptools.packages.find]
 where = ["."]
