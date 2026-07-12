@@ -1,10 +1,35 @@
 import hashlib
+import warnings
 from pathlib import Path
 from typing import Literal, Optional, Union
 from urllib.parse import unquote, urlparse
 from urllib.request import urlopen
 
 from ..urls import HFHUB_BASE_URL, MODEL_URLS
+
+
+def get_onnx_providers(providers: Optional[list] = None,
+                       cuda: bool = False) -> list:
+    """Return ONNX Runtime providers from an explicit list or CUDA preference."""
+    if providers is not None:
+        return providers
+    if cuda:
+        return ["CUDAExecutionProvider", "CPUExecutionProvider"]
+    return ["CPUExecutionProvider"]
+
+
+def warn_if_cuda_inactive(session, cuda: bool) -> None:
+    """Warn when CUDA was requested but the session did not activate it."""
+    if cuda and "CUDAExecutionProvider" not in session.get_providers():
+        warnings.warn(
+            "cuda=True was requested, but CUDAExecutionProvider is not active "
+            f"for this ONNX Runtime session. Active providers: "
+            f"{session.get_providers()}. This usually means the CUDA provider "
+            "failed to load its CUDA/cuDNN DLL dependencies and ONNX Runtime "
+            "fell back to CPU.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
 
 
 def sha256_file(path: Path, chunk_size: int = 1024 * 1024) -> str:

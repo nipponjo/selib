@@ -10,10 +10,13 @@ import numpy as np
 import librosa
 import onnxruntime as ort
 from pathlib import Path
-from typing import Dict, Optional, Tuple, Union
+from typing import Dict, Optional, Tuple, Union, Literal
 
-from .core import resolve_model_path
+from .core import get_onnx_providers, resolve_model_path, warn_if_cuda_inactive
 
+MM_MODEL_ID = Literal[
+    "ul_unas_16k",
+]
 
 class MagnitudeMaskModel:
     """Run an ONNX magnitude-mask speech-enhancement model.
@@ -35,6 +38,14 @@ class MagnitudeMaskModel:
         real/imaginary input.
     providers : list, optional
         Optional ONNX Runtime execution providers. Defaults to CPU execution.
+        The list of providers is ordered by precedence. For example
+        `['CUDAExecutionProvider', 'CPUExecutionProvider']`
+        means execute a node using `CUDAExecutionProvider`
+        if capable, otherwise execute using `CPUExecutionProvider`.
+    cuda : bool, default=False
+        If True and ``providers`` is not given, request
+        ``['CUDAExecutionProvider', 'CPUExecutionProvider']``. A warning is
+        printed if CUDA is requested but not active after session creation.
     cache_dir : str or pathlib.Path, optional
         Directory for downloaded models. Defaults to ``~/.cache/selib/models``.
     verbose : bool, default=True
@@ -42,8 +53,9 @@ class MagnitudeMaskModel:
     """
 
     def __init__(self,
-                 model_path: Union[str, Path] = './unet_d0.onnx',
+                 model_path: Union[str, Path, MM_MODEL_ID] = './unet_d0.onnx',
                  providers: Optional[list] = None,
+                 cuda: bool = False,
                  cache_dir: Optional[Union[str, Path]] = None,
                  verbose: bool = True,
                  path: Optional[Union[str, Path]] = None,
@@ -52,9 +64,10 @@ class MagnitudeMaskModel:
             model_path = path
         self.model_path = resolve_model_path(
             model_path, cache_dir=cache_dir, verbose=verbose)
-        providers = providers or ['CPUExecutionProvider',]
+        providers = get_onnx_providers(providers=providers, cuda=cuda)
         self.sess = ort.InferenceSession(
             str(self.model_path), providers=providers,)
+        warn_if_cuda_inactive(self.sess, cuda=cuda)
         self.input_names = [x.name for x in self.sess.get_inputs()]
         self.output_names = [x.name for x in self.sess.get_outputs()]
 

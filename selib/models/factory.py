@@ -108,6 +108,7 @@ def enhance(wave: np.ndarray,
             model: Optional[object] = None,
             model_kwargs: Optional[dict[str, Any]] = None,
             cache_model: bool = True,
+            cuda: bool = False,
             save_to: Optional[str] = None,
             bits_per_sample: Literal[8, 16, 24, 32] = 32,
             **enhance_kwargs: Any
@@ -133,6 +134,11 @@ def enhance(wave: np.ndarray,
     cache_model : bool, default=True
         If True, cache the loaded model wrapper on the function and reuse it on
         later calls with the same ``model_id`` and ``model_kwargs``.
+    cuda : bool, default=False
+        If True and ``model`` is omitted, request CUDA execution for the loaded
+        ONNX model. This sets the constructor default providers to
+        ``['CUDAExecutionProvider', 'CPUExecutionProvider']`` unless providers
+        are explicitly supplied in ``model_kwargs``.
     save_to : Optional[str], default=None
         If provided, save the enhanced waveform as a WAV file at this path.
     bits_per_sample : int, default=32
@@ -147,11 +153,13 @@ def enhance(wave: np.ndarray,
     ndarray | dict
         The selected model's enhancement result.
     """
+    model_kwargs = dict(model_kwargs or {})
+    model_kwargs.setdefault("cuda", cuda)
     if model is None:
         if cache_model:
             model = _get_cached_model(model_id, model_kwargs)
         else:
-            model = load_model(model_id, **(model_kwargs or {}))
+            model = load_model(model_id, **model_kwargs)
 
     output = model.enhance(wave, **enhance_kwargs)
     if save_to is not None:
